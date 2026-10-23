@@ -1,0 +1,1288 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>手語語序競賽系統 - 管理端</title>
+    <script src="https://cdn.jsdelivr.net/npm/canvas-confetti@1.6.0/dist/confetti.browser.min.js"></script>
+    <style>
+        :root {
+            --primary: #4a90e2; --success: #48bb78; --danger: #f56565; --bg: #f3f4f6;
+            --score-gold: #ecc94b; --pool-bg: #edf2f7;
+        }
+        body { font-family: 'PingFang TC', 'Microsoft JhengHei', sans-serif; background: var(--bg); margin: 0; padding: 15px; }
+        .container { max-width: 98vw; margin: 0 auto; background: white; padding: 20px; border-radius: 16px; box-shadow: 0 4px 20px rgba(0,0,0,0.1); }
+        
+        .scoreboard-container { display: flex; flex-wrap: wrap; gap: 10px; margin-bottom: 20px; justify-content: center; }
+        .team-box { display: flex; align-items: center; justify-content: space-between; padding: 8px 15px; border-radius: 12px; color: white; min-width: 140px; }
+        .score { font-size: 1.8rem; font-weight: 900; margin: 0 10px; }
+        .btn-adj { background: rgba(255,255,255,0.2); border: 1px solid rgba(255,255,255,0.4); color: white; border-radius: 4px; width: 26px; cursor: pointer; font-weight: bold; }
+        
+        .game-main-display { display: flex; flex-direction: column; gap: 15px; }
+        .question-header { background: #fffbeb; border: 2px solid var(--score-gold); padding: 15px; border-radius: 12px; display: flex; justify-content: space-between; align-items: center; }
+        .q-text-large { font-size: 1.5rem; font-weight: bold; color: #1f2937; }
+        
+        #dynamic-arenas-container {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(350px, 1fr));
+            gap: 15px;
+            width: 100%;
+        }
+        .team-arena {
+            background: #fff;
+            border: 3px solid #e2e8f0;
+            padding: 12px;
+            border-radius: 15px;
+            display: flex;
+            flex-direction: column;
+            gap: 10px;
+            position: relative;
+        }
+        .arena-title { text-align: center; padding: 6px; border-radius: 8px; color: white; font-weight: bold; font-size: 1.2rem; }
+        .labeled-box { position: relative; margin-top: 15px; }
+        .box-tag { position: absolute; top: -10px; left: 10px; color: white; padding: 2px 8px; border-radius: 4px; font-size: 0.7rem; font-weight: bold; z-index: 5; }
+        .zone { min-height: 80px; border-radius: 8px; padding: 15px 8px 8px 8px; display: flex; flex-wrap: wrap; gap: 6px; align-content: flex-start; }
+        .target-area { border: 2px dashed #cbd5e0; background: #fafafa; }
+        .pool-area { border: 1px solid #cbd5e0; background: var(--pool-bg); }
+        .card { background: var(--primary); color: white; padding: 6px 12px; border-radius: 6px; cursor: grab; font-weight: bold; font-size: 1.1rem; box-shadow: 0 2px 4px rgba(0,0,0,0.1); transition: transform 0.1s, box-shadow 0.1s; touch-action: none; user-select: none; -webkit-user-select: none; }
+        .card:hover { transform: translateY(-2px); box-shadow: 0 4px 8px rgba(0,0,0,0.2); }
+        .card.dragging { opacity: 0; pointer-events: none; }
+        .card.drag-ghost { position: fixed; pointer-events: none; z-index: 9999; opacity: 0.9; transform: rotate(2deg) scale(1.05); box-shadow: 0 8px 20px rgba(0,0,0,0.25); transition: none; }
+        .drop-placeholder { background: #bfdbfe; border: 2px dashed #3b82f6; border-radius: 6px; min-width: 40px; height: 36px; display: inline-flex; align-items: center; justify-content: center; }
+        
+        .tabs { display: flex; gap: 10px; margin-bottom: 20px; border-bottom: 2px solid #eee; }
+        .tab-btn { padding: 10px 25px; border: none; background: none; cursor: pointer; font-size: 1.1rem; color: #888; }
+        .tab-btn.active { color: var(--primary); border-bottom: 4px solid var(--primary); font-weight: bold; }
+        .content { display: none; }
+        .content.active { display: block; }
+        
+        .admin-section { background: #f8f9fa; padding: 20px; border-radius: 12px; margin-bottom: 20px; border: 1px solid #ddd; }
+        .btn-main { padding: 15px; border: none; border-radius: 10px; cursor: pointer; font-weight: bold; color: white; font-size: 1.1rem; width: 100%; }
+        .btn-set { padding: 8px 15px; background: white; border: 1px solid #cbd5e0; border-radius: 6px; cursor: pointer; }
+        .sync-status { padding: 8px; background: #edf2f7; text-align: center; border-radius: 8px; font-size: 0.9rem; font-weight: bold; color: #4a5568; margin-bottom: 15px; }
+
+        /* 後台收合功能 */
+        .admin-section > h3.collapsible-title { display:flex; align-items:center; gap:8px; margin:0; cursor:pointer; user-select:none; }
+        .admin-section > h3.collapsible-title .arrow { display:inline-block; width:1.2em; font-size:0.9em; color:#718096; transition:transform 0.2s; }
+        .admin-section.collapsed > h3.collapsible-title .arrow { transform:rotate(-90deg); }
+        .admin-section > .section-body { margin-top:15px; }
+        .admin-section.collapsed > .section-body { display:none; }
+        .admin-section > h3.collapsible-title:hover { color:var(--primary); }
+        .collapse-tools { display:flex; gap:8px; justify-content:flex-end; margin-bottom:12px; }
+
+        .answer-reveal-box {
+            display: none;
+            background: #fff7ed;
+            border: 2px dashed #d69e2e;
+            border-radius: 8px;
+            padding: 8px 12px;
+            font-weight: bold;
+            color: #92400e;
+            font-size: 1rem;
+        }
+        .answer-reveal-box.show { display: block; }
+
+        .cry-overlay {
+            position: absolute;
+            top: 0; left: 0; width: 100%; height: 100%;
+            background: rgba(255, 255, 255, 0.85);
+            display: flex; flex-direction: column; justify-content: center; align-items: center;
+            border-radius: 12px; z-index: 10;
+            animation: fadeIn 0.3s ease;
+        }
+        .cry-emoji { font-size: 5rem; animation: shake 0.5s ease infinite; }
+        .cry-text { font-size: 1.2rem; font-weight: bold; color: #e53e3e; margin-top: 10px; }
+        @keyframes fadeIn { from { opacity: 0; } to { opacity: 1; } }
+        @keyframes shake { 0%, 100% { transform: translateY(0); } 50% { transform: translateY(-10px); } }
+    </style>
+</head>
+<body>
+<div class="container">
+    <div id="sync-bar" class="sync-status">🔄 正在連線至雲端題庫...</div>
+    
+    <div id="scoreboard" class="scoreboard-container"></div>
+    <div class="tabs">
+        <button class="tab-btn active" onclick="switchTab('practice')">🎮 比賽模式</button>
+        <button class="tab-btn" onclick="switchTab('admin')">⚙️ 系統管理</button>
+    </div>
+    <div id="practice" class="content active">
+        <div class="game-main-display">
+            <div id="dynamic-arenas-container"></div>
+        </div>
+        <div id="result-msg"></div>
+        <label style="margin-top: 15px; display:flex; align-items:center; gap:8px; cursor:pointer; user-select:none; font-weight:bold; color:#4a5568;">
+            <input type="checkbox" id="auto-next-toggle" onchange="setAutoNext(this.checked)" style="width:18px; height:18px; cursor:pointer;">
+            ⏭️ 答對後自動換下一題（仍可按「🔄 換一題」手動換題）
+        </label>
+        <div style="margin-top: 12px; display: flex; gap: 10px;">
+            <button class="btn-main" style="background:#4a5568" onclick="loadNewQuestion(); sendCommand('newQuestion')">全部換題 (同步更新)</button>
+            <button id="btn-toggle-answers" class="btn-main" style="background:#d69e2e" onclick="toggleAnswers()">👁️ 公布正確答案</button>
+        </div>
+    </div>
+    <div id="admin" class="content">
+        <div class="admin-section">
+            <h3>👥 參賽組別設定</h3>
+            <div class="quick-set-row" style="display:flex; gap:8px; flex-wrap:wrap; margin-bottom:15px;">
+                <button class="btn-set" onclick="quickSetTeams(1)">1 組</button>
+                <button class="btn-set" onclick="quickSetTeams(2)">2 組</button>
+                <button class="btn-set" onclick="quickSetTeams(3)">3 組</button>
+                <button class="btn-set" onclick="quickSetTeams(4)">4 組</button>
+            </div>
+            <div id="team-list-admin" style="display: grid; grid-template-columns: repeat(auto-fill, minmax(250px, 1fr)); gap: 10px;"></div>
+            <button class="btn-main" style="background:var(--success); margin-top: 10px;" onclick="addNewTeam()">＋ 新增組別</button>
+        </div>
+        <div class="admin-section">
+            <h3>📝 題庫管理 (雲端即時同步)</h3>
+            <input type="text" id="in-spoken" placeholder="輸入口語句子" style="width:100%; padding:12px; margin-bottom:10px; box-sizing: border-box;">
+            <input type="text" id="in-correct" placeholder="正確手語語序 (多組答案用 | 隔開，詞彙用空格)" style="width:100%; padding:12px; margin-bottom:10px; box-sizing: border-box;">
+            <div style="display:flex; gap:8px; margin-bottom:10px; flex-wrap:wrap;">
+                <select id="in-category" style="flex:2; min-width:140px; padding:12px; border:1px solid #cbd5e0; border-radius:6px; font-size:1rem; background:white;">
+                    <option value="">📂 無分類</option>
+                </select>
+                <input type="text" id="in-new-category" placeholder="輸入新分類名稱" style="flex:2; min-width:140px; padding:12px; border:1px solid #cbd5e0; border-radius:6px; box-sizing:border-box;">
+                <button type="button" onclick="addCategory()" style="flex:1; min-width:100px; padding:12px 16px; background:#805ad5; color:white; border:none; border-radius:6px; cursor:pointer; font-weight:bold; white-space:nowrap;">＋ 新增分類</button>
+            </div>
+            <input type="hidden" id="edit-q-id" value="">
+            <button id="btn-save" class="btn-main" style="background:var(--primary); margin-bottom:15px;" onclick="handleSave()">儲存題目</button>
+            
+            <hr style="margin: 20px 0; border: 0; border-top: 1px solid #ddd;">
+            <div style="background: #eef2f6; padding: 15px; border-radius: 8px; border: 1px dashed #cbd5e0;">
+                <p style="margin: 0 0 10px 0; font-size: 0.95rem; color: #4a5568; font-weight: bold; line-height: 1.4;">
+                    📦 離線匯出/匯入功能：<br>
+                    <span style="color: #dd6b20; font-weight: normal; font-size: 0.85rem;">(在 A 電腦出完題後點擊「匯出」，再把檔案拿到 B 電腦點擊「匯入」即可同步題目)</span>
+                </p>
+                <div style="display: flex; gap: 10px;">
+                    <button type="button" class="btn-set" style="flex: 1; background: #4a90e2; color: white; font-weight: bold; padding: 10px;" onclick="exportQuestions()">📤 匯出題庫檔案</button>
+                    <button type="button" class="btn-set" style="flex: 1; background: #38a169; color: white; font-weight: bold; padding: 10px;" onclick="triggerImport()">📥 匯入題庫檔案</button>
+                    <input type="file" id="import-file" accept=".json" style="display: none;" onchange="handleImport(event)">
+                </div>
+            </div>
+        </div>
+        <div id="q-list-container"></div>
+    </div>
+</div>
+
+<script>
+    // 已嵌入您提供的 Firebase 資料庫網址
+    const FIREBASE_URL = "https://word-420e5-default-rtdb.asia-southeast1.firebasedatabase.app"; 
+
+    let teams = JSON.parse(localStorage.getItem('SL_TEAMS_DATA')) || [{ name: "練習者", score: 0 }];
+    let db = []; // 從雲端即時載入，預設為空
+    let selectedQuestionIds = []; // 儲存被打勾選中的題目 ID
+    let categories = []; // 分類清單（從 db 動態計算）
+    let collapsedCategories = {}; // 追蹤哪些分類被折疊
+    let teamCurrentQuestions = [];
+    let teamUsedQuestions = [];
+    let answersVisible = false; // 是否正在公布正確答案
+    const teamColors = ['#e53e3e', '#3182ce', '#38a169', '#d69e2e', '#805ad5', '#319795', '#ed64a6'];
+
+    // 🟢 從 Firebase 雲端獲取最新題庫
+    async function fetchCloudDB() {
+        try {
+            const response = await fetch(`${FIREBASE_URL}/db.json`);
+            const data = await response.json();
+            db = data ? Object.values(data) : [];
+            // 將所有 id 強制轉為 Number 並去除浮點數（統一型態，避免字串/數字比對失敗）
+            db.forEach(q => { q.id = Math.round(Number(q.id)); });
+            
+            // 預設全選所有題目
+            selectedQuestionIds = db.map(q => q.id);
+            
+            document.getElementById('sync-bar').innerHTML = `🟢 雲端同步成功！目前共 ${db.length} 道題目`;
+            document.getElementById('sync-bar').style.background = "#d1fae5";
+            document.getElementById('sync-bar').style.color = "#065f46";
+        } catch (error) {
+            console.error(error);
+            document.getElementById('sync-bar').innerHTML = "🔴 雲端連線失敗，請檢查網絡或 Firebase 資料庫規則。";
+            document.getElementById('sync-bar').style.background = "#fee2e2";
+            document.getElementById('sync-bar').style.color = "#991b1b";
+        }
+    }
+
+    // 🔵 將完整狀態推送到 Firebase 雲端（db + teams + selectedIds）
+    async function saveToCloud() {
+        try {
+            const uploadData = {};
+            db.forEach(q => { uploadData[q.id] = q; });
+            
+            await Promise.all([
+                fetch(`${FIREBASE_URL}/db.json`, {
+                    method: 'PUT',
+                    body: JSON.stringify(uploadData)
+                }),
+                fetch(`${FIREBASE_URL}/teams.json`, {
+                    method: 'PUT',
+                    body: JSON.stringify(teams.map(t => ({ name: t.name, score: t.score })))
+                }),
+                fetch(`${FIREBASE_URL}/selectedIds.json`, {
+                    method: 'PUT',
+                    body: JSON.stringify(selectedQuestionIds)
+                })
+            ]);
+            await fetchCloudDB(); 
+            renderAdminList();
+            loadNewQuestion();
+        } catch (error) {
+            alert("同步至雲端失敗！請檢查您的 Firebase Rules（規則）是否已開放讀寫。");
+        }
+    }
+
+    // 📡 送出換題指令給顯示端
+    async function sendCommand(action) {
+        try {
+            await fetch(`${FIREBASE_URL}/command.json`, {
+                method: 'PUT',
+                body: JSON.stringify({ action, token: Date.now() })
+            });
+        } catch (e) { console.error('sendCommand failed', e); }
+    }
+
+    // 🔵 僅同步 teams 和 selectedIds（不重建題庫）
+    async function syncTeamsAndSelection() {
+        try {
+            await Promise.all([
+                fetch(`${FIREBASE_URL}/teams.json`, {
+                    method: 'PUT',
+                    body: JSON.stringify(teams.map(t => ({ name: t.name, score: t.score })))
+                }),
+                fetch(`${FIREBASE_URL}/selectedIds.json`, {
+                    method: 'PUT',
+                    body: JSON.stringify(selectedQuestionIds)
+                })
+            ]);
+        } catch (e) { console.error('syncTeamsAndSelection failed', e); }
+    }
+
+    async function initGame() {
+        renderScoreboard();
+        renderTeamAdmin();
+        await fetchCloudDB(); 
+        renderAdminList();
+        loadNewQuestion();
+        // 初始化時把目前的 teams 和 selectedIds 同步到雲端
+        await syncTeamsAndSelection();
+    }
+
+    // 🎯 取得目前有效（被勾選）的題庫子集
+    function getFilteredDB() {
+        let filtered = db.filter(q => selectedQuestionIds.includes(q.id));
+        if (filtered.length === 0 && db.length > 0) {
+            alert("⚠️ 提示：您沒有勾選任何題目，系統將自動從完整題庫中抽題。");
+            return db;
+        }
+        return filtered;
+    }
+
+    function loadNewQuestion() {
+        Object.keys(autoNextTimers).forEach(k => { clearTimeout(autoNextTimers[k]); delete autoNextTimers[k]; });
+        if (!db.length) return;
+        const container = document.getElementById('dynamic-arenas-container');
+        container.innerHTML = '';
+        teamCurrentQuestions = [];
+        teamUsedQuestions = new Array(teams.length).fill().map(() => []);
+        document.getElementById('result-msg').style.display = 'none';
+        answersVisible = false;
+        const btnToggle = document.getElementById('btn-toggle-answers');
+        if (btnToggle) {
+            btnToggle.textContent = '👁️ 公布正確答案';
+            btnToggle.style.background = '#d69e2e';
+        }
+        
+        const selectedQs = getUniqueQuestions(teams.length);
+        teams.forEach((team, idx) => {
+            const q = selectedQs[idx];
+            if(q) {
+                teamUsedQuestions[idx].push(q.id);
+                createTeamArena(idx, q);
+            }
+        });
+    }
+
+    function createTeamArena(idx, q) {
+        const color = teamColors[idx % teamColors.length];
+        teamCurrentQuestions[idx] = { question: q, points: 5, solved: false };
+        
+        let arena = document.getElementById(`arena-${idx}`);
+        if (!arena) {
+            arena = document.createElement('div');
+            arena.className = 'team-arena';
+            arena.id = `arena-${idx}`;
+            arena.style.borderColor = color;
+            document.getElementById('dynamic-arenas-container').appendChild(arena);
+        }
+
+        arena.innerHTML = `
+            <div class="arena-title" style="background:${color}">${teams[idx].name}</div>
+            <div class="question-header">
+                <div class="q-text-large">${q.spoken}</div>
+                <div style="background:var(--score-gold); padding:5px 12px; border-radius:50px; font-weight:900; color:#744210;">★ 5</div>
+            </div>
+            <div id="answer-reveal-${idx}" class="answer-reveal-box${answersVisible ? ' show' : ''}">✅ 正確答案：${q.answers.map(a => a.join(' ')).join('　|　')}</div>
+            <div class="labeled-box">
+                <div class="box-tag" style="background:#4a5568">語序區</div>
+                <div id="target-zone-${idx}" class="zone target-area"></div>
+            </div>
+            <div class="labeled-box">
+                <div class="box-tag" style="background:#718096">詞彙池</div>
+                <div id="source-pool-${idx}" class="zone pool-area"></div>
+            </div>
+            <button class="btn-main" style="background:${color}" onclick="checkAnswer(${idx})">檢查答案</button>
+            <button class="btn-main" style="background:#edf2f7; color:#4a5568; margin-top:5px;" onclick="refreshSingleTeam(${idx})">🔄 換一題</button>
+        `;
+
+        const pool = document.getElementById(`source-pool-${idx}`);
+        const target = document.getElementById(`target-zone-${idx}`);
+
+        pool.innerHTML = '';
+        const mainAnswer = q.answers[0] || [];
+        // Fisher-Yates 洗牌，確保詞彙池順序每次都不同（不與正確答案順序相同）
+        let wordsForPool = [...mainAnswer];
+        let attempts = 0;
+        do {
+            for (let i = wordsForPool.length - 1; i > 0; i--) {
+                const j = Math.floor(Math.random() * (i + 1));
+                [wordsForPool[i], wordsForPool[j]] = [wordsForPool[j], wordsForPool[i]];
+            }
+            attempts++;
+        } while (
+            wordsForPool.length > 1 &&
+            JSON.stringify(wordsForPool) === JSON.stringify(mainAnswer) &&
+            attempts < 10
+        );
+        
+        wordsForPool.forEach(word => {
+            const card = createCard(word, idx);
+            pool.appendChild(card);
+        });
+
+        setupDropZone(pool, idx);
+        setupDropZone(target, idx);
+    }
+
+    // ===== 拖曳 + 點擊 系統 =====
+    // pendingPress：按下但還不確定是點擊或拖曳
+    let pendingPress = null; // { card, teamIdx, startX, startY }
+    let dragState = null;    // { card, teamIdx, ghost, offsetX, offsetY }
+    const DRAG_THRESHOLD = 6; // 超過 6px 才算拖曳
+
+    function createCard(word, teamIdx) {
+        const card = document.createElement('div');
+        card.className = 'card';
+        card.textContent = word;
+        card.draggable = false;
+
+        // ── 滑鼠 ──
+        card.addEventListener('mousedown', (e) => {
+            if (e.button !== 0) return;
+            e.preventDefault();
+            pendingPress = { card, teamIdx, startX: e.clientX, startY: e.clientY };
+            document.addEventListener('mousemove', onMousePendingMove);
+            document.addEventListener('mouseup', onMousePendingUp);
+        });
+
+        // ── 觸控 ──
+        card.addEventListener('touchstart', (e) => {
+            e.preventDefault();
+            const t = e.touches[0];
+            pendingPress = { card, teamIdx, startX: t.clientX, startY: t.clientY };
+            document.addEventListener('touchmove', onTouchPendingMove, { passive: false });
+            document.addEventListener('touchend', onTouchPendingUp);
+        }, { passive: false });
+
+        return card;
+    }
+
+    // 滑鼠：移動超過閾值 → 升級為拖曳
+    function onMousePendingMove(e) {
+        if (!pendingPress) return;
+        const dx = e.clientX - pendingPress.startX;
+        const dy = e.clientY - pendingPress.startY;
+        if (Math.hypot(dx, dy) > DRAG_THRESHOLD) {
+            const p = pendingPress;
+            cancelPendingPress(false);
+            activateDrag(p.card, p.teamIdx, p.startX, p.startY);
+            moveDrag(e.clientX, e.clientY);
+            document.addEventListener('mousemove', onDragMove);
+            document.addEventListener('mouseup', onDragEnd);
+        }
+    }
+
+    // 滑鼠：沒有超過閾值就鬆開 → 視為點擊
+    function onMousePendingUp(e) {
+        if (!pendingPress) return;
+        const p = pendingPress;
+        cancelPendingPress(false);
+        doClick(p.card, p.teamIdx);
+    }
+
+    // 觸控：移動超過閾值 → 升級為拖曳
+    function onTouchPendingMove(e) {
+        if (!pendingPress) return;
+        e.preventDefault();
+        const t = e.touches[0];
+        const dx = t.clientX - pendingPress.startX;
+        const dy = t.clientY - pendingPress.startY;
+        if (Math.hypot(dx, dy) > DRAG_THRESHOLD) {
+            const p = pendingPress;
+            cancelPendingPress(true);
+            activateDrag(p.card, p.teamIdx, p.startX, p.startY);
+            moveDrag(t.clientX, t.clientY);
+            document.addEventListener('touchmove', onTouchMove, { passive: false });
+            document.addEventListener('touchend', onDragEnd);
+        }
+    }
+
+    // 觸控：沒有超過閾值就鬆開 → 視為點擊
+    function onTouchPendingUp(e) {
+        if (!pendingPress) return;
+        const p = pendingPress;
+        cancelPendingPress(true);
+        doClick(p.card, p.teamIdx);
+    }
+
+    function cancelPendingPress(isTouch) {
+        pendingPress = null;
+        document.removeEventListener('mousemove', onMousePendingMove);
+        document.removeEventListener('mouseup', onMousePendingUp);
+        document.removeEventListener('touchmove', onTouchPendingMove);
+        document.removeEventListener('touchend', onTouchPendingUp);
+    }
+
+    // 點擊邏輯：池子 ↔ 語序區互換；語序區內點擊選中後再點目標位置
+    function doClick(card, teamIdx) {
+        const target = document.getElementById(`target-zone-${teamIdx}`);
+        const pool = document.getElementById(`source-pool-${teamIdx}`);
+        if (card.parentNode === pool) {
+            // 從池子移到語序區末尾
+            target.appendChild(card);
+        } else {
+            // 從語序區移回池子
+            pool.appendChild(card);
+        }
+        // 點擊後閃爍回饋
+        card.style.transition = 'transform 0.12s';
+        card.style.transform = 'scale(1.18)';
+        setTimeout(() => { card.style.transform = ''; }, 120);
+    }
+
+    // 正式啟動拖曳（已確認超過閾值）
+    function activateDrag(card, teamIdx, startX, startY) {
+        const rect = card.getBoundingClientRect();
+        const offsetX = startX - rect.left;
+        const offsetY = startY - rect.top;
+
+        const ghost = document.createElement('div');
+        ghost.className = 'card drag-ghost';
+        ghost.textContent = card.textContent;
+        ghost.style.width = rect.width + 'px';
+        ghost.style.left = rect.left + 'px';
+        ghost.style.top = rect.top + 'px';
+        document.body.appendChild(ghost);
+
+        card.classList.add('dragging');
+        dragState = { card, teamIdx, ghost, offsetX, offsetY };
+    }
+
+    function onDragMove(e) {
+        if (!dragState) return;
+        moveDrag(e.clientX, e.clientY);
+    }
+
+    function onTouchMove(e) {
+        if (!dragState) return;
+        e.preventDefault();
+        moveDrag(e.touches[0].clientX, e.touches[0].clientY);
+    }
+
+    function moveDrag(clientX, clientY) {
+        const { ghost, offsetX, offsetY, teamIdx } = dragState;
+        ghost.style.left = (clientX - offsetX) + 'px';
+        ghost.style.top  = (clientY - offsetY) + 'px';
+
+        document.querySelectorAll('.drop-placeholder').forEach(p => p.remove());
+
+        ghost.style.visibility = 'hidden';
+        const el = document.elementFromPoint(clientX, clientY);
+        ghost.style.visibility = '';
+
+        const zone = el ? el.closest('.zone') : null;
+        if (!zone) { resetZoneHighlight(teamIdx); return; }
+
+        const placeholder = document.createElement('div');
+        placeholder.className = 'drop-placeholder';
+        zone.insertBefore(placeholder, getInsertBefore(zone, clientX, clientY));
+        highlightZone(teamIdx, zone);
+    }
+
+    // 二維排列感知：先找同行最近，再跨行比較
+    function getInsertBefore(zone, clientX, clientY) {
+        const cards = Array.from(zone.children).filter(
+            c => !c.classList.contains('drop-placeholder') && !c.classList.contains('dragging')
+        );
+        if (!cards.length) return null;
+
+        // 找距離最近的插入縫隙
+        let best = null, bestDist = Infinity;
+        cards.forEach((c, i) => {
+            const r = c.getBoundingClientRect();
+            // 每張卡左邊縫隙
+            const dist = Math.hypot(clientX - r.left, clientY - (r.top + r.height / 2));
+            if (dist < bestDist) { bestDist = dist; best = c; }
+        });
+        // 最後一張卡右邊縫隙
+        const last = cards[cards.length - 1];
+        const lr = last.getBoundingClientRect();
+        const distLast = Math.hypot(clientX - (lr.right), clientY - (lr.top + lr.height / 2));
+        if (distLast < bestDist) return null; // 插末尾
+
+        return best;
+    }
+
+    function highlightZone(teamIdx, activeZone) {
+        const target = document.getElementById(`target-zone-${teamIdx}`);
+        const pool = document.getElementById(`source-pool-${teamIdx}`);
+        [target, pool].forEach(z => {
+            if (!z) return;
+            if (z === activeZone) {
+                z.style.borderColor = '#3b82f6';
+                z.style.backgroundColor = '#eff6ff';
+            } else {
+                z.style.borderColor = '';
+                z.style.backgroundColor = '';
+            }
+        });
+    }
+
+    function resetZoneHighlight(teamIdx) {
+        const target = document.getElementById(`target-zone-${teamIdx}`);
+        const pool = document.getElementById(`source-pool-${teamIdx}`);
+        [target, pool].forEach(z => { if (z) { z.style.borderColor = ''; z.style.backgroundColor = ''; } });
+    }
+
+    function onDragEnd(e) {
+        if (!dragState) return;
+        const { card, teamIdx, ghost } = dragState;
+
+        const clientX = e.clientX ?? e.changedTouches?.[0]?.clientX;
+        const clientY = e.clientY ?? e.changedTouches?.[0]?.clientY;
+
+        ghost.style.visibility = 'hidden';
+        const el = clientX != null ? document.elementFromPoint(clientX, clientY) : null;
+        ghost.style.visibility = '';
+
+        const zone = el ? el.closest('.zone') : null;
+        const placeholder = document.querySelector('.drop-placeholder');
+
+        if (zone && placeholder && placeholder.parentNode === zone) {
+            zone.insertBefore(card, placeholder);
+        }
+        // zone 不存在或無占位符 → 留在原位（card 仍在 DOM，dragging class 移除即可顯示）
+
+        placeholder?.remove();
+        ghost.remove();
+        card.classList.remove('dragging');
+        resetZoneHighlight(teamIdx);
+
+        dragState = null;
+        document.removeEventListener('mousemove', onDragMove);
+        document.removeEventListener('mouseup', onDragEnd);
+        document.removeEventListener('touchmove', onTouchMove);
+        document.removeEventListener('touchend', onDragEnd);
+    }
+
+    function setupDropZone(zone, teamIdx) {
+        // 新系統在全域事件處理，此處保留空函式以維持呼叫相容
+    }
+
+    function toggleAnswers() {
+        answersVisible = !answersVisible;
+        const btn = document.getElementById('btn-toggle-answers');
+        teamCurrentQuestions.forEach((data, idx) => {
+            const box = document.getElementById(`answer-reveal-${idx}`);
+            if (box) box.classList.toggle('show', answersVisible);
+        });
+        if (btn) {
+            btn.textContent = answersVisible ? '🙈 隱藏正確答案' : '👁️ 公布正確答案';
+            btn.style.background = answersVisible ? '#9ca3af' : '#d69e2e';
+        }
+    }
+
+    // ⏭️ 答對自動換題設定（預設開啟，狀態記在瀏覽器）
+    const AUTO_NEXT_DELAY = 2000; // 答對後等待毫秒數（讓彩帶與訊息先播完）
+    let autoNextEnabled = localStorage.getItem('SL_AUTO_NEXT') !== '0';
+    const autoNextTimers = {};
+
+    function setAutoNext(on) {
+        autoNextEnabled = on;
+        try { localStorage.setItem('SL_AUTO_NEXT', on ? '1' : '0'); } catch (e) {}
+        if (!on) { Object.keys(autoNextTimers).forEach(k => { clearTimeout(autoNextTimers[k]); delete autoNextTimers[k]; }); }
+    }
+
+    function scheduleAutoNext(teamIdx, solvedQuestionId) {
+        if (!autoNextEnabled || autoNextTimers[teamIdx]) return;
+        autoNextTimers[teamIdx] = setTimeout(() => {
+            delete autoNextTimers[teamIdx];
+            const cur = teamCurrentQuestions[teamIdx];
+            // 若期間已手動換題，就不再重複換
+            if (!autoNextEnabled || !cur || !cur.question || cur.question.id !== solvedQuestionId) return;
+            refreshSingleTeam(teamIdx);
+        }, AUTO_NEXT_DELAY);
+    }
+
+    function checkAnswer(teamIdx) {
+        const data = teamCurrentQuestions[teamIdx];
+        if (!data) return;
+
+        const userOrder = Array.from(document.getElementById(`target-zone-${teamIdx}`).children)
+                             .map(c => c.textContent);
+
+        const isCorrect = data.question.answers.some(ans =>
+            JSON.stringify(ans) === JSON.stringify(userOrder)
+        );
+
+        const msg = document.getElementById('result-msg');
+        msg.style.display = 'block';
+
+        if (isCorrect) {
+            msg.innerHTML = `🎉 ${teams[teamIdx].name} 答對了！+5 分`;
+            msg.style.background = "#d1fae5";
+            msg.style.color = "#065f46";
+            
+            if (!data.solved) {
+                teams[teamIdx].score += 5;
+                data.solved = true;
+                saveTeams();
+                renderScoreboard();
+            }
+            triggerConfettiFromTeam(teamIdx);
+            scheduleAutoNext(teamIdx, data.question.id);
+        } else {
+            msg.innerHTML = `❌ ${teams[teamIdx].name} 語序錯誤，請再調整`;
+            msg.style.background = "#fee2e2";
+            msg.style.color = "#991b1b";
+
+            data.solved = false; 
+            triggerCryFromTeam(teamIdx);
+        }
+    }
+
+    function triggerCryFromTeam(teamIdx) {
+        const arena = document.getElementById(`arena-${teamIdx}`);
+        if (!arena) return;
+        if (arena.querySelector('.cry-overlay')) return;
+
+        const cryOverlay = document.createElement('div');
+        cryOverlay.className = 'cry-overlay';
+        cryOverlay.innerHTML = `
+            <div class="cry-emoji">😭</div>
+            <div class="cry-text">語序錯誤！再試一次！</div>
+        `;
+        arena.appendChild(cryOverlay);
+
+        setTimeout(() => { cryOverlay.remove(); }, 1000);
+    }
+
+    function triggerConfettiFromTeam(teamIdx) {
+        const arena = document.getElementById(`arena-${teamIdx}`);
+        if (!arena) return;
+        const rect = arena.getBoundingClientRect();
+        const x = (rect.left + rect.width / 2) / window.innerWidth;
+        const y = (rect.top + rect.height / 3) / window.innerHeight;
+        confetti({
+            particleCount: 200,
+            spread: 90,
+            origin: { x: x, y: y },
+            colors: ['#ff0000', '#00ff00', '#0000ff', '#ffff00', '#ff00ff', '#00ffff']
+        });
+    }
+
+    function refreshSingleTeam(idx) {
+        if (autoNextTimers[idx]) { clearTimeout(autoNextTimers[idx]); delete autoNextTimers[idx]; }
+        const activeDB = getFilteredDB();
+        if (!activeDB.length) return;
+        document.getElementById('result-msg').style.display = 'none';
+
+        // 取得目前畫面上其他隊伍的題目 ID（避免重複）
+        const currentOnScreenIds = teamCurrentQuestions
+            .filter((item, i) => i !== idx && item && item.question)
+            .map(item => item.question.id);
+
+        // 同時排除「目前這題」，確保換題後題目一定不同
+        const currentQuestionId = teamCurrentQuestions[idx] && teamCurrentQuestions[idx].question
+            ? teamCurrentQuestions[idx].question.id
+            : null;
+
+        let available = activeDB.filter(q =>
+            !teamUsedQuestions[idx].includes(q.id) &&
+            !currentOnScreenIds.includes(q.id) &&
+            q.id !== currentQuestionId
+        );
+
+        // 若排除已用過的後沒有可用題目，重置已用記錄再篩一次
+        if (available.length === 0) {
+            teamUsedQuestions[idx] = [];
+            available = activeDB.filter(q =>
+                !currentOnScreenIds.includes(q.id) &&
+                q.id !== currentQuestionId
+            );
+        }
+        // 最後手段：題庫只有一道題時，仍允許重複（但確保詞彙池順序重新洗牌）
+        if (available.length === 0) { available = [...activeDB]; }
+
+        const newQuestion = available[Math.floor(Math.random() * available.length)];
+        teamUsedQuestions[idx].push(newQuestion.id);
+
+        // 記住舊 arena 在容器中的位置，換題後插回同一位置
+        const container = document.getElementById('dynamic-arenas-container');
+        const oldArena = document.getElementById(`arena-${idx}`);
+        const nextSibling = oldArena ? oldArena.nextSibling : null;
+
+        if (oldArena) oldArena.remove();
+
+        // 建立新 arena 並插回正確位置（保持隊伍順序不變）
+        createTeamArena(idx, newQuestion);
+        const newArena = document.getElementById(`arena-${idx}`);
+        if (newArena && nextSibling) {
+            container.insertBefore(newArena, nextSibling);
+        }
+    }
+
+    function getUniqueQuestions(count) {
+        const activeDB = getFilteredDB();
+        let arr = [...activeDB];
+        for (let i = arr.length - 1; i > 0; i--) {
+            const j = Math.floor(Math.random() * (i + 1));
+            [arr[i], arr[j]] = [arr[j], arr[i]];
+        }
+        while (arr.length < count && activeDB.length > 0) {
+            let backup = [...activeDB];
+            for (let i = backup.length - 1; i > 0; i--) {
+                const j = Math.floor(Math.random() * (i + 1));
+                [backup[i], backup[j]] = [backup[j], backup[i]];
+            }
+            arr = arr.concat(backup);
+        }
+        return arr.slice(0, count);
+    }
+
+    function renderScoreboard() {
+        const container = document.getElementById('scoreboard');
+        container.innerHTML = '';
+        teams.forEach((team, i) => {
+            const box = document.createElement('div');
+            box.className = 'team-box';
+            box.style.backgroundColor = teamColors[i % teamColors.length];
+            box.innerHTML = `
+                <div style="font-weight:bold">${team.name}</div>
+                <div style="display:flex; align-items:center">
+                    <button class="btn-adj" onclick="adjustScore(${i}, -1)">−</button>
+                    <div class="score">${team.score}</div>
+                    <button class="btn-adj" onclick="adjustScore(${i}, 1)">+</button>
+                </div>
+            `;
+            container.appendChild(box);
+        });
+    }
+
+    function adjustScore(i, delta) {
+        teams[i].score = Math.max(0, teams[i].score + delta);
+        saveTeams();
+        renderScoreboard();
+    }
+
+    function saveTeams() {
+        localStorage.setItem('SL_TEAMS_DATA', JSON.stringify(teams));
+    }
+
+    function quickSetTeams(n) {
+        if (confirm(`確定要切換為 ${n} 組嗎？所有組別分數將重新計算。`)) {
+            teams = [];
+            for (let i = 1; i <= n; i++) {
+                teams.push({ name: n === 1 ? "練習者" : `第 ${i} 組`, score: 0 });
+            }
+            saveTeams();
+            renderTeamAdmin();
+            renderScoreboard();
+            loadNewQuestion();
+            syncTeamsAndSelection();
+            sendCommand('newQuestion');
+        }
+    }
+
+    function addNewTeam() {
+        if (teams.length >= 8) return alert("最多 8 組");
+        teams.forEach(team => { team.score = 0; });
+        teams.push({ name: `第 ${teams.length + 1} 組`, score: 0 });
+        saveTeams();
+        renderTeamAdmin();
+        renderScoreboard();
+        loadNewQuestion();
+        syncTeamsAndSelection();
+        sendCommand('newQuestion');
+    }
+
+    function renderTeamAdmin() {
+        const container = document.getElementById('team-list-admin');
+        container.innerHTML = '';
+        teams.forEach((team, i) => {
+            const div = document.createElement('div');
+            div.style.cssText = "background:white; padding:12px; border-radius:8px; border:1px solid #ddd; display:flex; gap:8px;";
+            div.innerHTML = `
+                <input type="text" value="${team.name}" onchange="updateTeamName(${i}, this.value)" style="flex:1">
+                <button onclick="deleteTeam(${i})" style="background:#f56565; color:white; border:none; padding:8px 12px; border-radius:6px; cursor:pointer;">刪除</button>
+            `;
+            container.appendChild(div);
+        });
+    }
+
+    function updateTeamName(i, name) {
+        teams[i].name = name || `組別 ${i+1}`;
+        saveTeams();
+        renderScoreboard();
+        syncTeamsAndSelection();
+    }
+
+    function deleteTeam(i) {
+        if (teams.length === 1) return alert("至少要保留一組");
+        if (confirm("確定刪除此組？")) {
+            teams.splice(i, 1);
+            saveTeams();
+            renderTeamAdmin();
+            renderScoreboard();
+            loadNewQuestion();
+            syncTeamsAndSelection();
+            sendCommand('newQuestion');
+        }
+    }
+
+    // 🔄 處理控制台勾選框狀態變更
+    function handleSelectToggle(id, isChecked) {
+        if (isChecked) {
+            if (!selectedQuestionIds.includes(id)) {
+                selectedQuestionIds.push(id);
+            }
+        } else {
+            selectedQuestionIds = selectedQuestionIds.filter(qId => qId !== id);
+        }
+        syncTeamsAndSelection();
+    }
+
+    // 📂 分類管理：從 db 中收集所有分類
+    function getCategories() {
+        const cats = new Set();
+        db.forEach(q => { if (q.category) cats.add(q.category); });
+        return ['', ...Array.from(cats).sort()]; // '' = 無分類
+    }
+
+    // 📂 更新分類下拉選單
+    function refreshCategorySelect() {
+        const sel = document.getElementById('in-category');
+        const current = sel.value;
+        sel.innerHTML = '<option value="">📂 無分類</option>';
+        getCategories().filter(c => c !== '').forEach(cat => {
+            const opt = document.createElement('option');
+            opt.value = cat;
+            opt.textContent = '📁 ' + cat;
+            sel.appendChild(opt);
+        });
+        sel.value = current; // 保持原選項
+    }
+
+    // 📂 新增分類
+    function addCategory() {
+        const input = document.getElementById('in-new-category');
+        const name = input.value.trim();
+        if (!name) return alert("請輸入分類名稱");
+        // 直接加到下拉選單並選取
+        const sel = document.getElementById('in-category');
+        const exists = Array.from(sel.options).some(o => o.value === name);
+        if (!exists) {
+            const opt = document.createElement('option');
+            opt.value = name;
+            opt.textContent = '📁 ' + name;
+            sel.appendChild(opt);
+        }
+        sel.value = name;
+        input.value = '';
+    }
+
+    // 📂 重命名分類
+    async function renameCategory(oldName) {
+        const newName = prompt(`將分類「${oldName}」重新命名為：`, oldName);
+        if (!newName || newName.trim() === oldName) return;
+        const trimmed = newName.trim();
+        db.forEach(q => { if (q.category === oldName) q.category = trimmed; });
+        await saveToCloud();
+    }
+
+    // 📂 刪除分類（題目保留，分類欄清空）
+    async function deleteCategory(catName) {
+        const count = db.filter(q => q.category === catName).length;
+        if (!confirm(`確定刪除分類「${catName}」嗎？\n該分類下的 ${count} 道題目將移至「無分類」。`)) return;
+        db.forEach(q => { if (q.category === catName) q.category = ''; });
+        await saveToCloud();
+    }
+
+    // 📂 刪除分類並同時刪除該分類內所有題目
+    async function deleteCategoryWithQuestions(catName) {
+        const count = db.filter(q => q.category === catName).length;
+        if (!confirm(`⚠️ 確定要刪除分類「${catName}」並刪除其中全部 ${count} 道題目嗎？\n\n此操作無法復原，題目將從雲端永久移除！`)) return;
+        const idsToRemove = db.filter(q => q.category === catName).map(q => q.id);
+        db = db.filter(q => q.category !== catName);
+        selectedQuestionIds = selectedQuestionIds.filter(id => !idsToRemove.includes(id));
+        await saveToCloud();
+    }
+
+    // 📂 按分類全選/取消
+    function toggleCategorySelect(catName, checked) {
+        const qs = db.filter(q => (q.category || '') === catName);
+        qs.forEach(q => {
+            if (checked) {
+                if (!selectedQuestionIds.includes(q.id)) selectedQuestionIds.push(q.id);
+            } else {
+                selectedQuestionIds = selectedQuestionIds.filter(id => id !== q.id);
+            }
+        });
+        renderAdminList();
+        syncTeamsAndSelection();
+    }
+
+    function renderAdminList() {
+        const container = document.getElementById('q-list-container');
+        container.innerHTML = '';
+        refreshCategorySelect();
+
+        if (db.length === 0) {
+            container.innerHTML = '<p style="color:#888; text-align:center; padding:20px;">尚無題目，請新增第一道題目！</p>';
+            return;
+        }
+
+        // 按分類分組
+        const groups = {};
+        db.forEach(q => {
+            const cat = q.category || '';
+            if (!groups[cat]) groups[cat] = [];
+            groups[cat].push(q);
+        });
+
+        const catOrder = Object.keys(groups).sort((a, b) => {
+            if (a === '') return 1; // 無分類放最後
+            if (b === '') return -1;
+            return a.localeCompare(b, 'zh-TW');
+        });
+
+        // 總計列
+        const totalChecked = selectedQuestionIds.length;
+        const header = document.createElement('div');
+        header.style.cssText = "display:flex; justify-content:space-between; align-items:center; margin-bottom:10px; flex-wrap:wrap; gap:8px;";
+        header.innerHTML = `
+            <h3 style="margin:0;">題庫清單 <span style="font-size:0.85rem; color:#888; font-weight:normal;">（共 ${db.length} 題，已選 ${totalChecked} 題）</span></h3>
+            <div style="display:flex; gap:6px; flex-wrap:wrap;">
+                <button onclick="selectAll(true)" style="padding:6px 12px; background:#48bb78; color:white; border:none; border-radius:6px; cursor:pointer; font-size:0.85rem;">全選</button>
+                <button onclick="selectAll(false)" style="padding:6px 12px; background:#a0aec0; color:white; border:none; border-radius:6px; cursor:pointer; font-size:0.85rem;">全取消</button>
+                <button onclick="setAllCategoriesCollapsed(false)" style="padding:6px 12px; background:#805ad5; color:white; border:none; border-radius:6px; cursor:pointer; font-size:0.85rem;">▼ 全部展開</button>
+                <button onclick="setAllCategoriesCollapsed(true)" style="padding:6px 12px; background:#553c9a; color:white; border:none; border-radius:6px; cursor:pointer; font-size:0.85rem;">▶ 全部收合</button>
+            </div>
+        `;
+        container.appendChild(header);
+
+        catOrder.forEach(catName => {
+            const qs = groups[catName];
+            const catId = 'cat_' + (catName || '__none__');
+            const isCollapsed = !!collapsedCategories[catId];
+            const catCheckedCount = qs.filter(q => selectedQuestionIds.includes(q.id)).length;
+            const allCatChecked = catCheckedCount === qs.length;
+            const displayName = catName || '📂 無分類';
+            const catColor = catName ? '#805ad5' : '#a0aec0';
+
+            // 分類標題列
+            const catHeader = document.createElement('div');
+            catHeader.style.cssText = `display:flex; align-items:center; gap:8px; background:${catColor}18; border:1px solid ${catColor}44; border-radius:10px; padding:10px 14px; margin-top:12px; cursor:pointer; user-select:none;`;
+            catHeader.innerHTML = `
+                <span style="font-size:1.1rem;">${isCollapsed ? '▶' : '▼'}</span>
+                <input type="checkbox" ${allCatChecked ? 'checked' : ''} onclick="event.stopPropagation(); toggleCategorySelect('${catName}', this.checked)" style="width:18px; height:18px; cursor:pointer; accent-color:${catColor};">
+                <strong style="flex:1; color:#2d3748;">${displayName}</strong>
+                <span style="font-size:0.8rem; color:#718096;">${catCheckedCount}/${qs.length} 已選</span>
+                ${catName ? `
+                <button onclick="event.stopPropagation(); renameCategory('${catName}')" style="padding:4px 8px; background:#ecc94b; color:#744210; border:none; border-radius:4px; cursor:pointer; font-size:0.75rem;">✏️ 改名</button>
+                <button onclick="event.stopPropagation(); deleteCategory('${catName}')" style="padding:4px 8px; background:#fc8181; color:#742a2a; border:none; border-radius:4px; cursor:pointer; font-size:0.75rem;">🗑 移至無分類</button>
+                ` : ''}
+                <button onclick="event.stopPropagation(); deleteCategoryWithQuestions('${catName}')" style="padding:4px 8px; background:#c53030; color:white; border:none; border-radius:4px; cursor:pointer; font-size:0.75rem; font-weight:bold;">🗑 刪除分類+題目</button>
+            `;
+            catHeader.addEventListener('click', () => {
+                collapsedCategories[catId] = !collapsedCategories[catId];
+                renderAdminList();
+            });
+            container.appendChild(catHeader);
+
+            // 題目列表
+            const qList = document.createElement('div');
+            qList.style.cssText = `display:${isCollapsed ? 'none' : 'block'}; border-left:3px solid ${catColor}55; margin-left:12px; padding-left:4px;`;
+
+            qs.forEach(q => {
+                const isChecked = selectedQuestionIds.includes(q.id) ? 'checked' : '';
+                const isEditing = currentInlineEditId === q.id;
+                const div = document.createElement('div');
+                div.style.cssText = "margin:4px 0;";
+
+                // 題目列
+                const row = document.createElement('div');
+                row.style.cssText = `padding:10px 12px; background:${isEditing ? '#fffbeb' : 'white'}; border-radius:${isEditing ? '8px 8px 0 0' : '8px'}; border:1px solid ${isEditing ? '#ecc94b' : '#eee'}; border-bottom:${isEditing ? '0' : '1px solid #eee'}; display:flex; justify-content:space-between; align-items:center; gap:8px;`;
+                row.innerHTML = `
+                    <input type="checkbox" ${isChecked} onchange="handleSelectToggle(${q.id}, this.checked); renderAdminList();" style="width:18px; height:18px; cursor:pointer; flex-shrink:0;">
+                    <div style="flex:1; min-width:0;">
+                        <strong style="display:block; word-break:break-all;">${q.spoken}</strong>
+                        <small style="color:#718096;">答案：${q.answers.map(a => a.join(' ')).join(' | ')}</small>
+                    </div>
+                    <div style="display:flex; gap:5px; flex-shrink:0;">
+                        <button onclick="editQuestion(${q.id})" style="background:${isEditing ? '#ecc94b' : '#4a90e2'}; color:${isEditing ? '#744210' : 'white'}; border:none; padding:6px 10px; border-radius:4px; cursor:pointer; font-size:0.85rem;">${isEditing ? '取消' : '修改'}</button>
+                        <button onclick="deleteQuestion(${q.id})" style="background:#f56565; color:white; border:none; padding:6px 10px; border-radius:4px; cursor:pointer; font-size:0.85rem;">刪除</button>
+                    </div>
+                `;
+                div.appendChild(row);
+
+                // 內嵌編輯區
+                if (isEditing) {
+                    const editPanel = document.createElement('div');
+                    editPanel.style.cssText = "background:#fffbeb; border:1px solid #ecc94b; border-top:0; border-radius:0 0 8px 8px; padding:12px 14px; display:flex; flex-direction:column; gap:8px;";
+
+                    // 建立分類選項 HTML
+                    const cats = getCategories().filter(c => c !== '');
+                    const catOptions = cats.map(c => `<option value="${c}" ${q.category === c ? 'selected' : ''}>📁 ${c}</option>`).join('');
+
+                    editPanel.innerHTML = `
+                        <input type="text" id="inline-spoken-${q.id}" value="${q.spoken.replace(/"/g, '&quot;')}" placeholder="口語句子" style="width:100%; padding:10px; box-sizing:border-box; border:1px solid #cbd5e0; border-radius:6px; font-size:1rem;">
+                        <input type="text" id="inline-correct-${q.id}" value="${q.answers.map(a => a.join(' ')).join(' | ').replace(/"/g, '&quot;')}" placeholder="正確手語語序 (多組答案用 | 隔開)" style="width:100%; padding:10px; box-sizing:border-box; border:1px solid #cbd5e0; border-radius:6px; font-size:1rem;">
+                        <select id="inline-category-${q.id}" style="width:100%; padding:10px; border:1px solid #cbd5e0; border-radius:6px; font-size:1rem; background:white;">
+                            <option value="" ${!q.category ? 'selected' : ''}>📂 無分類</option>
+                            ${catOptions}
+                        </select>
+                        <div style="display:flex; gap:8px;">
+                            <button onclick="saveInlineEdit(${q.id})" style="flex:1; padding:10px; background:#48bb78; color:white; border:none; border-radius:6px; cursor:pointer; font-weight:bold; font-size:1rem;">✅ 儲存修改</button>
+                            <button onclick="cancelInlineEdit()" style="flex:1; padding:10px; background:#a0aec0; color:white; border:none; border-radius:6px; cursor:pointer; font-size:1rem;">✖ 取消</button>
+                        </div>
+                    `;
+                    div.appendChild(editPanel);
+                }
+
+                qList.appendChild(div);
+            });
+            container.appendChild(qList);
+        });
+    }
+
+    // 📂 全部分類展開 / 收合
+    function setAllCategoriesCollapsed(collapsed) {
+        const cats = new Set(db.map(q => q.category || ''));
+        cats.forEach(c => { collapsedCategories['cat_' + (c || '__none__')] = collapsed; });
+        renderAdminList();
+    }
+
+    // 🔽 後台區塊收合功能（狀態會記在瀏覽器）
+    function initCollapsibleSections() {
+        let saved = {};
+        try { saved = JSON.parse(localStorage.getItem('SL_ADMIN_COLLAPSED')) || {}; } catch (e) {}
+        document.querySelectorAll('#admin .admin-section').forEach((sec, idx) => {
+            const title = sec.querySelector(':scope > h3');
+            if (!title || sec.querySelector(':scope > .section-body')) return;
+            const body = document.createElement('div');
+            body.className = 'section-body';
+            Array.from(sec.children).forEach(ch => { if (ch !== title) body.appendChild(ch); });
+            sec.appendChild(body);
+            title.classList.add('collapsible-title');
+            title.insertAdjacentHTML('afterbegin', '<span class="arrow">▼</span>');
+            const key = 'sec' + idx;
+            if (saved[key]) sec.classList.add('collapsed');
+            title.addEventListener('click', () => {
+                sec.classList.toggle('collapsed');
+                saved[key] = sec.classList.contains('collapsed');
+                try { localStorage.setItem('SL_ADMIN_COLLAPSED', JSON.stringify(saved)); } catch (e) {}
+            });
+        });
+    }
+
+    function selectAll(checked) {
+        if (checked) {
+            selectedQuestionIds = db.map(q => q.id);
+        } else {
+            selectedQuestionIds = [];
+        }
+        renderAdminList();
+        syncTeamsAndSelection();
+    }
+
+    // 📦 離線功能：匯出題庫為 JSON 檔案
+    function exportQuestions() {
+        if (!db || db.length === 0) {
+            alert("目前雲端題庫中沒有題目可以匯出！");
+            return;
+        }
+        const dataStr = "data:text/json;charset=utf-8," + encodeURIComponent(JSON.stringify(db, null, 2));
+        const downloadAnchor = document.createElement('a');
+        downloadAnchor.setAttribute("href", dataStr);
+        downloadAnchor.setAttribute("download", "sl_questions_export.json");
+        document.body.appendChild(downloadAnchor);
+        downloadAnchor.click();
+        downloadAnchor.remove();
+    }
+
+    // 📦 離線功能：觸發隱藏的檔案上傳點擊
+    function triggerImport() {
+        document.getElementById('import-file').click();
+    }
+
+    // 📦 離線功能：處理匯入的 JSON 檔案並同步回雲端
+    function handleImport(event) {
+        const file = event.target.files[0];
+        if (!file) return;
+
+        const reader = new FileReader();
+        reader.onload = async function(e) {
+            try {
+                const importedData = JSON.parse(e.target.result);
+                let newQuestions = [];
+
+                if (Array.isArray(importedData)) {
+                    newQuestions = importedData;
+                } else if (typeof importedData === 'object' && importedData !== null) {
+                    newQuestions = Object.values(importedData);
+                }
+
+                if (newQuestions.length === 0) {
+                    alert("匯入失敗：選取的檔案中沒有有效的題目資料！");
+                    return;
+                }
+
+                if (confirm(`確定要匯入 ${newQuestions.length} 道題目嗎？這些題目將會新增至目前題庫（不會覆蓋原有題目）。`)) {
+                    // 取得現有題目的 spoken 文字集合，避免重複匯入相同題目
+                    const existingSpoken = new Set(db.map(q => q.spoken));
+                    let addedCount = 0;
+                    let skippedCount = 0;
+
+                    newQuestions.forEach(q => {
+                        if (existingSpoken.has(q.spoken)) {
+                            skippedCount++;
+                        } else {
+                            // 重新產生 id 避免衝突（使用整數避免浮點數比對問題）
+                            db.push({ ...q, id: Date.now() * 1000 + Math.floor(Math.random() * 1000) });
+                            existingSpoken.add(q.spoken);
+                            addedCount++;
+                        }
+                    });
+
+                    document.getElementById('sync-bar').innerHTML = "⏳ 正在將匯入的資料同步至雲端...";
+                    document.getElementById('sync-bar').style.background = "#fffbeb";
+                    document.getElementById('sync-bar').style.color = "#744210";
+
+                    await saveToCloud(); // 自動推送到 Firebase
+                    alert(`🎉 匯入完成！\n✅ 新增：${addedCount} 道題目\n⏭️ 略過（已存在）：${skippedCount} 道題目`);
+                }
+            } catch (err) {
+                alert("讀取檔案失敗！請確認該檔案是否為正確的題庫匯出格式 (.json)。");
+                console.error(err);
+            } finally {
+                event.target.value = ''; // 清空欄位以便重複觸發
+            }
+        };
+        reader.readAsText(file);
+    }
+
+    let currentInlineEditId = null;
+
+    function editQuestion(id) {
+        id = Math.round(Number(id));
+        // 如果點同一題，取消
+        if (currentInlineEditId === id) {
+            cancelInlineEdit();
+            return;
+        }
+        currentInlineEditId = id;
+        renderAdminList();
+    }
+
+    function cancelInlineEdit() {
+        currentInlineEditId = null;
+        renderAdminList();
+    }
+
+    async function saveInlineEdit(id) {
+        id = Math.round(Number(id));
+        const spoken = document.getElementById(`inline-spoken-${id}`).value.trim();
+        const correct = document.getElementById(`inline-correct-${id}`).value.trim();
+        const category = document.getElementById(`inline-category-${id}`).value.trim();
+        if (!spoken || !correct) return alert("請填寫完整");
+        const answers = correct.split('|').map(group => group.trim().split(/\s+/));
+        const qIndex = db.findIndex(item => item.id == id);
+        if (qIndex !== -1) {
+            db[qIndex].spoken = spoken;
+            db[qIndex].answers = answers;
+            db[qIndex].category = category;
+        }
+        currentInlineEditId = null;
+        document.getElementById('sync-bar').innerHTML = "⏳ 正在同步更新至雲端...";
+        document.getElementById('sync-bar').style.background = "#fffbeb";
+        document.getElementById('sync-bar').style.color = "#744210";
+        await saveToCloud();
+    }
+
+    async function deleteQuestion(id) {
+        if (confirm("確定要刪除這道題目嗎？（這將會同步刪除雲端資料）")) {
+            db = db.filter(item => item.id !== id);
+            selectedQuestionIds = selectedQuestionIds.filter(qId => qId !== id);
+            await saveToCloud();
+            if (document.getElementById('edit-q-id').value == id) { resetForm(); }
+        }
+    }
+
+    async function handleSave() {
+        const spoken = document.getElementById('in-spoken').value.trim();
+        const correct = document.getElementById('in-correct').value.trim();
+        const editId = document.getElementById('edit-q-id').value;
+        const category = document.getElementById('in-category').value.trim();
+        
+        if (!spoken || !correct) return alert("請填寫完整");
+        const answers = correct.split('|').map(group => group.trim().split(/\s+/));
+        
+        if (editId) {
+            const qIndex = db.findIndex(item => item.id == editId);
+            if (qIndex !== -1) {
+                db[qIndex].spoken = spoken;
+                db[qIndex].answers = answers;
+                db[qIndex].category = category;
+            }
+        } else {
+            db.push({ id: Date.now(), spoken: spoken, answers: answers, category: category });
+        }
+        
+        document.getElementById('sync-bar').innerHTML = "⏳ 正在同步更新至雲端...";
+        document.getElementById('sync-bar').style.background = "#fffbeb";
+        document.getElementById('sync-bar').style.color = "#744210";
+
+        await saveToCloud();
+        resetForm();
+    }
+
+    function resetForm() {
+        document.getElementById('in-spoken').value = '';
+        document.getElementById('in-correct').value = '';
+        document.getElementById('in-category').value = '';
+        document.getElementById('edit-q-id').value = '';
+        
+        const btnSave = document.getElementById('btn-save');
+        btnSave.textContent = "儲存題目";
+        btnSave.style.background = "var(--primary)";
+        btnSave.style.color = "white";
+    }
+
+    function switchTab(tab) {
+        document.querySelectorAll('.content').forEach(c => c.classList.remove('active'));
+        document.querySelectorAll('.tab-btn').forEach(b => b.classList.remove('active'));
+        document.getElementById(tab).classList.add('active');
+        if(window.event && window.event.currentTarget) { window.event.currentTarget.classList.add('active'); }
+    }
+
+    window.onload = function () { document.getElementById('auto-next-toggle').checked = autoNextEnabled; initCollapsibleSections(); initGame(); };
+</script>
+</body>
+</html>
+
