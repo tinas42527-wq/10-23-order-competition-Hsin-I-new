@@ -218,7 +218,7 @@ input[type=checkbox].adm-box-cb {
 /* 🏆 組別對抗 */
 #team-hud{display:none;flex-direction:column;align-items:center}
 #team-hud-name{font-size:20px;font-weight:900;line-height:1}
-#team-board{display:none;flex:1;min-width:0;gap:6px;flex-wrap:wrap;max-height:46px;overflow:hidden;align-content:center}
+#team-board{display:none;flex:1;min-width:0;gap:6px;flex-wrap:wrap;max-height:52px;overflow-y:auto;align-content:center;padding:2px 0}
 .tpill{display:flex;align-items:center;gap:6px;background:rgba(255,255,255,0.06);border:1px solid rgba(255,255,255,0.12);border-radius:16px;padding:2px 10px;font-size:12px;color:#ddd;white-space:nowrap}
 .tpill.cur{border-color:#FFD700;background:rgba(255,215,0,0.14);color:#fff}
 .tpill b{color:#FFD700;font-size:14px}
@@ -231,6 +231,8 @@ table.tb{border-collapse:collapse;min-width:300px}
 .tb td.tot{color:#FFD700;font-weight:900;font-size:16px}
 .tb td.nm{text-align:left;font-weight:700}
 #team-names input{margin-bottom:5px}
+.tmembers{display:flex;flex-wrap:wrap;gap:6px;justify-content:center;max-width:80%;max-height:20vh;overflow-y:auto;margin-bottom:4px}
+.tmembers span{background:rgba(255,255,255,0.08);border:1px solid rgba(255,255,255,0.15);color:#fff;border-radius:14px;padding:3px 12px;font-size:14px;font-weight:700}
 .team-champ{font-size:30px;font-weight:900;color:#FFD700;margin:4px 0 2px;text-align:center}
 </style>
 </head>
@@ -339,11 +341,16 @@ table.tb{border-collapse:collapse;min-width:300px}
       </label>
       <div id="team-config" style="display:none;margin-top:8px">
         <div class="rrow"><span>參賽組數</span><span id="team-n-val" style="color:#FFD700;font-weight:700">3 組</span></div>
-        <input type="range" id="team-n-sl" min="2" max="8" value="3" step="1" oninput="updateTeamN(this.value)">
+        <input type="range" id="team-n-sl" min="2" max="12" value="3" step="1" oninput="updateTeamN(this.value)">
         <div class="rrow"><span>每組上場局數</span><span id="team-r-val" style="color:#5B9FFF;font-weight:700">1 局</span></div>
         <input type="range" id="team-r-sl" min="1" max="5" value="1" step="1" oninput="updateTeamR(this.value)">
         <div class="pl" style="margin-top:6px">組別名稱（可自訂）</div>
         <div id="team-names"></div>
+        <div class="pl" style="margin-top:6px">分組系統房間代碼（兩邊要相同）</div>
+        <input type="text" id="team-room-in" placeholder="default" oninput="setTeamRoom(this.value)">
+        <button class="pbtn" onclick="importRoster()">📥 從分組系統匯入組數與組員</button>
+        <p id="team-roster-note" style="font-size:11px;color:#aaa;margin:4px 0 0;line-height:1.4"></p>
+        <button class="pbtn" onclick="publishTeamScores(true)">📤 手動同步成績到分組系統</button>
         <button class="pbtn" onclick="startTeamMatch()">🏁 開始對抗賽</button>
         <button class="pbtn" onclick="resetTeamMatch(true)">↺ 重設對抗賽</button>
       </div>
@@ -1802,17 +1809,17 @@ function drawFloats(){ floats.forEach(f=>{ctx.save();ctx.globalAlpha=Math.min(1,
 // ══════════════ 🏆 組別對抗（各組輪流上場，累計總分）══════════════
 const TEAM_KEY = 'sf_team_cfg';
 const TEAM_COLORS = ['#FF5B5B','#5B9FFF','#4BC97A','#FFB347','#C47BFF','#FF80C8','#2EC4B6','#FFDE3D'];
-const team = { on:false, n:3, rounds:1, names:[], rs:[], turns:[], idx:0, started:false, finished:false, recorded:false };
+const team = { on:false, n:3, rounds:1, names:[], members:[], rs:[], turns:[], idx:0, started:false, finished:false, recorded:false };
 (function loadTeamCfg() {
   try {
     const c = JSON.parse(localStorage.getItem(TEAM_KEY) || 'null');
-    if (c) { team.on = !!c.on; team.n = Math.min(8, Math.max(2, c.n || 3)); team.rounds = Math.min(5, Math.max(1, c.rounds || 1)); team.names = c.names || []; }
+    if (c) { team.on = !!c.on; team.n = Math.min(12, Math.max(2, c.n || 3)); team.rounds = Math.min(5, Math.max(1, c.rounds || 1)); team.names = c.names || []; team.members = c.members || []; }
   } catch(e) {}
 })();
 function teamEsc(s) { return String(s).replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c])); }
 function teamName(i) { return (team.names[i] && team.names[i].trim()) || ('第' + (i + 1) + '組'); }
 function teamTotal(i) { return team.rs[i] ? team.rs[i].reduce((a, b) => a + b, 0) : 0; }
-function saveTeamCfg() { try { localStorage.setItem(TEAM_KEY, JSON.stringify({ on:team.on, n:team.n, rounds:team.rounds, names:team.names })); } catch(e) {} }
+function saveTeamCfg() { try { localStorage.setItem(TEAM_KEY, JSON.stringify({ on:team.on, n:team.n, rounds:team.rounds, names:team.names, members:team.members })); } catch(e) {} }
 function teamLocked() { return team.on && team.started && !team.finished; }
 
 function renderTeamConfig() {
@@ -1822,11 +1829,12 @@ function renderTeamConfig() {
   document.getElementById('team-n-val').textContent = team.n + ' 組';
   document.getElementById('team-r-sl').value = team.rounds;
   document.getElementById('team-r-val').textContent = team.rounds + ' 局';
+  document.getElementById('team-room-in').value = localStorage.getItem('sf_team_room') || '';
   const box = document.getElementById('team-names');
   box.innerHTML = '';
   for (let i = 0; i < team.n; i++) {
     const inp = document.createElement('input');
-    inp.type = 'text'; inp.value = team.names[i] || ''; inp.placeholder = '第' + (i + 1) + '組';
+    inp.type = 'text'; inp.value = team.names[i] || ''; inp.placeholder = '第' + (i + 1) + '組' + ((team.members[i] && team.members[i].length) ? '（' + team.members[i].length + ' 人）' : '');
     inp.style.borderLeft = '4px solid ' + TEAM_COLORS[i % 8];
     inp.oninput = () => { team.names[i] = inp.value; saveTeamCfg(); updateTeamBoard(); };
     box.appendChild(inp);
@@ -1897,7 +1905,8 @@ function showTeamIntro() {
   ov.innerHTML = `
     <p class="sub" style="margin-bottom:6px">第 ${cur.r + 1} / ${team.rounds} 輪 ・ 第 ${team.idx + 1} / ${team.turns.length} 場</p>
     <h1 style="color:${TEAM_COLORS[cur.t % 8]};font-size:36px;text-align:center">🏆 輪到「${teamEsc(teamName(cur.t))}」上場！</h1>
-    <p class="sub">準備好就開始，全組一起加油！</p>
+    <p class="sub" style="margin-bottom:8px">準備好就開始，全組一起加油！</p>
+    ${teamMembersHtml(cur.t)}
     ${teamBoardHtml(cur.t, false)}
     <div style="margin-top:10px">
       <button class="gbtn preview-btn" onclick="openPreview()">🃏 預習本次詞彙</button>
@@ -1931,7 +1940,11 @@ function showTeamResult() {
       <div style="margin-top:10px">
         <button class="gbtn" onclick="nextTeamTurn()">➡ 下一組：${teamEsc(teamName(nx.t))}</button>
       </div>
-      <button class="hbtn" style="margin-top:14px" onclick="resetTeamMatch(true)">結束對抗賽</button>`;
+      <p id="team-sync-note" style="font-size:12px;color:#aaa;margin-top:10px"></p>
+      <div style="margin-top:6px">
+        <button class="hbtn" onclick="publishTeamScores(true)">📤 重新同步</button>
+        <button class="hbtn" onclick="resetTeamMatch(true)">結束對抗賽</button>
+      </div>`;
   } else {
     team.finished = true;
     const max = Math.max(...Array.from({ length: team.n }, (_, i) => teamTotal(i)));
@@ -1944,15 +1957,82 @@ function showTeamResult() {
       <div style="margin-top:10px">
         <button class="gbtn" onclick="startTeamMatch()">🔁 再比一次</button>
         <button class="gbtn preview-btn" style="margin-right:0" onclick="resetTeamMatch(true)">回主選單</button>
-      </div>`;
+      </div>
+      <p id="team-sync-note" style="font-size:12px;color:#aaa;margin-top:12px"></p>
+      <button class="hbtn" style="margin-top:6px" onclick="publishTeamScores(true)">📤 重新同步到分組系統</button>`;
     addLog('sys', `🏁 對抗賽結束，${champs.length > 1 ? '並列冠軍' : '冠軍'}：${champs.join('、')}`);
   }
   ov.style.display = 'flex';
   updateTeamBoard();
+  publishTeamScores(); // 每組打完就把累計成績送到分組系統
 }
 function nextTeamTurn() {
   team.idx++; team.recorded = false;
   showTeamIntro();
+}
+
+// ── 📤 成績同步到「分組系統」（Firebase：teamScores/<房間代碼>）──
+function teamRoomKey() { return ((localStorage.getItem('sf_team_room') || 'default').trim().replace(/[.#$\[\]\/]/g, '_')) || 'default'; }
+function setTeamRoom(v) { try { localStorage.setItem('sf_team_room', v.trim()); } catch(e) {} }
+function teamSyncNote(msg, color) {
+  const el = document.getElementById('team-sync-note');
+  if (el) { el.textContent = msg; el.style.color = color || '#aaa'; }
+}
+async function publishTeamScores(manual) {
+  if (!team.on || !team.started || !team.rs.length) { if (manual) addLog('sys', '尚無對抗賽成績可同步'); return; }
+  const key = teamRoomKey();
+  const payload = {
+    updatedAt: Date.now(), finished: !!team.finished, rounds: team.rounds,
+    teams: Array.from({ length: team.n }, (_, i) => ({ index: i, name: teamName(i), total: teamTotal(i), rs: team.rs[i] || [] }))
+  };
+  try { localStorage.setItem('sf_team_scores_' + key, JSON.stringify(payload)); } catch(e) {} // 同網域備援
+  if (!window._fbReady) { teamSyncNote('⚠️ 雲端尚未連線，成績只存在本機', '#FFB347'); addLog('sys', '⚠️ 雲端尚未連線，成績尚未送到分組系統'); return; }
+  setSyncStatus('saving'); teamSyncNote('☁️ 同步中…', '#FFD700');
+  try {
+    await window._fbSet(window._fbRef(window._fbDb, 'teamScores/' + key), payload);
+    setSyncStatus('saved');
+    teamSyncNote(`✅ 已同步到分組系統（房間：${key}）`, '#4CAF50');
+    addLog('sys', `📤 已同步 ${team.n} 組成績到分組系統（房間：${key}）`);
+  } catch (e) {
+    console.warn('成績同步失敗：', e);
+    setSyncStatus('error'); teamSyncNote('⚠️ 同步失敗，請按「重新同步」', '#FF6B6B');
+    addLog('esc', '成績同步到分組系統失敗');
+  }
+}
+
+// ── 📥 從「分組系統」匯入組數與組員（Firebase：teamRoster/<房間代碼>）──
+function teamMembersHtml(i) {
+  const m = team.members[i];
+  if (!m || !m.length) return '';
+  return `<div class="tmembers">${m.map(n => `<span>${teamEsc(n)}</span>`).join('')}</div>`;
+}
+function rosterNote(msg, color) {
+  const el = document.getElementById('team-roster-note');
+  if (el) { el.textContent = msg; el.style.color = color || '#aaa'; }
+}
+async function importRoster() {
+  if (teamLocked()) { rosterNote('對抗賽進行中，請先「重設對抗賽」再匯入', '#FFB347'); return; }
+  if (!window._fbReady || !window._fbGet) { rosterNote('⚠️ 雲端尚未連線，無法匯入', '#FFB347'); return; }
+  rosterNote('☁️ 讀取中…', '#FFD700');
+  try {
+    const snap = await window._fbGet(window._fbRef(window._fbDb, 'teamRoster/' + teamRoomKey()));
+    if (!snap.exists()) { rosterNote('分組系統尚未送出名單：請在分組檔完成分組，並確認兩邊房間代碼相同', '#FFB347'); return; }
+    const d = snap.val();
+    const gs = (Array.isArray(d.groups) ? d.groups : Object.values(d.groups || {})).filter(Boolean);
+    if (gs.length < 2) { rosterNote('分組系統只有 ' + gs.length + ' 組，至少要 2 組才能對抗', '#FFB347'); return; }
+    if (team.started) resetTeamMatch(false); // 已結束的對抗賽：換組別後清掉舊成績
+    const n = Math.min(12, gs.length);
+    team.n = n;
+    team.names = [];                       // 名稱與分組檔的「第 N 組」對齊
+    team.members = gs.slice(0, n).map(x => Array.isArray(x.members) ? x.members : Object.values(x.members || {}));
+    saveTeamCfg(); renderTeamConfig(); updateTeamBoard();
+    const people = team.members.reduce((a, m) => a + m.length, 0);
+    rosterNote(`✅ 已匯入 ${n} 組、共 ${people} 人` + (gs.length > n ? `（分組檔有 ${gs.length} 組，最多匯入 ${n} 組）` : ''), '#4CAF50');
+    addLog('sys', `📥 已從分組系統匯入 ${n} 組、${people} 人`);
+  } catch (e) {
+    console.warn('匯入名單失敗：', e);
+    rosterNote('⚠️ 匯入失敗（請檢查資料庫權限）', '#FF6B6B');
+  }
 }
 
 function updateTeamBoard() {
