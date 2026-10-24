@@ -5,6 +5,8 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>手語語序競賽系統 - 管理端</title>
     <script src="https://cdn.jsdelivr.net/npm/canvas-confetti@1.6.0/dist/confetti.browser.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
     <style>
         :root {
             --primary: #4a90e2; --success: #48bb78; --danger: #f56565; --bg: #f3f4f6;
@@ -979,7 +981,7 @@
             <h3 style="margin:0;">題庫清單 <span style="font-size:0.85rem; color:#888; font-weight:normal;">（共 ${db.length} 題，已選 ${totalChecked} 題）</span></h3>
             <div style="display:flex; gap:6px; flex-wrap:wrap;">
                 <label style="display:flex; align-items:center; gap:4px; font-size:0.85rem; color:#4a5568; cursor:pointer;"><input type="checkbox" id="pdf-with-answers" ${window._pdfWithAnswers === false ? '' : 'checked'} onchange="window._pdfWithAnswers = this.checked" style="width:16px; height:16px;">含答案</label>
-                <button onclick="exportSelectedPDF()" style="padding:6px 12px; background:#e53e3e; color:white; border:none; border-radius:6px; cursor:pointer; font-size:0.85rem; font-weight:bold;">📄 匯出勾選題目 PDF</button>
+                <button id="btn-export-pdf" onclick="exportSelectedPDF()" style="padding:6px 12px; background:#e53e3e; color:white; border:none; border-radius:6px; cursor:pointer; font-size:0.85rem; font-weight:bold;">📄 匯出勾選題目 PDF</button>
                 <button onclick="selectAll(true)" style="padding:6px 12px; background:#48bb78; color:white; border:none; border-radius:6px; cursor:pointer; font-size:0.85rem;">全選</button>
                 <button onclick="selectAll(false)" style="padding:6px 12px; background:#a0aec0; color:white; border:none; border-radius:6px; cursor:pointer; font-size:0.85rem;">全取消</button>
                 <button onclick="setAllCategoriesCollapsed(false)" style="padding:6px 12px; background:#805ad5; color:white; border:none; border-radius:6px; cursor:pointer; font-size:0.85rem;">▼ 全部展開</button>
@@ -1113,7 +1115,7 @@
         syncTeamsAndSelection();
     }
 
-    // 📄 匯出勾選題目為 PDF（預習用）：開啟列印對話框 → 選「另存為 PDF」
+    // 📄 匯出勾選題目為 PDF（預習用）：直接下載 PDF 檔
     function exportSelectedPDF() {
         const qs = db.filter(q => selectedQuestionIds.includes(q.id));
         if (qs.length === 0) { alert("⚠️ 尚未勾選任何題目，請先勾選要匯出的題目！"); return; }
@@ -1143,41 +1145,107 @@
         });
 
         const today = new Date().toLocaleDateString('zh-TW');
-        const html = `<!DOCTYPE html><html lang="zh-TW"><head><meta charset="UTF-8"><title>手語語序預習題目</title><style>
-            @page { size: A4; margin: 14mm; }
-            body { font-family: 'PingFang TC','Microsoft JhengHei','Noto Sans TC',sans-serif; color:#1a202c; margin:0; }
-            h1 { font-size:20pt; margin:0 0 4px; }
-            .meta { color:#718096; font-size:10pt; margin-bottom:6px; }
-            .nameline { font-size:11pt; margin:8px 0 4px; }
-            h2 { font-size:13pt; margin:18px 0 6px; padding:4px 10px; background:#edf2f7; border-left:5px solid #4a90e2; break-after:avoid; }
-            table { width:100%; border-collapse:collapse; font-size:11.5pt; }
-            th, td { border:1px solid #cbd5e0; padding:7px 9px; vertical-align:top; text-align:left; }
-            th { background:#f7fafc; font-size:10.5pt; }
-            tr { break-inside:avoid; }
-            .no { width:28px; text-align:center; color:#718096; }
-            .sp { width:36%; }
-            .ans { margin:2px 0; line-height:2; }
-            .w { display:inline-block; background:#ebf4ff; border:1px solid #90cdf4; border-radius:5px; padding:0 8px; font-weight:bold; }
-            .arr { color:#a0aec0; margin:0 3px; }
-            .alt { font-size:9pt; color:#d69e2e; font-weight:bold; margin-right:6px; }
-            .blank { height:30px; border-bottom:1px dashed #a0aec0; }
-            * { -webkit-print-color-adjust:exact; print-color-adjust:exact; }
-        </style></head><body>
+        if (typeof html2canvas === 'undefined' || !window.jspdf) { alert("⚠️ PDF 元件載入失敗，請檢查網路連線後重新整理頁面再試一次。"); return; }
+
+        const css = `
+            #pdf-root { width:760px; background:#fff; padding:10px 6px; box-sizing:border-box; font-family:'PingFang TC','Microsoft JhengHei','Noto Sans TC',sans-serif; color:#1a202c; }
+            #pdf-root h1 { font-size:26px; margin:0 0 6px; }
+            #pdf-root .meta { color:#718096; font-size:13px; margin-bottom:6px; }
+            #pdf-root .nameline { font-size:15px; margin:10px 0 4px; }
+            #pdf-root h2 { font-size:17px; margin:20px 0 8px; padding:5px 10px; background:#edf2f7; border-left:5px solid #4a90e2; }
+            #pdf-root table { width:100%; border-collapse:collapse; font-size:15px; }
+            #pdf-root th, #pdf-root td { border:1px solid #cbd5e0; padding:8px 10px; vertical-align:top; text-align:left; }
+            #pdf-root th { background:#f7fafc; font-size:14px; }
+            #pdf-root tr { page-break-inside:avoid; }
+            #pdf-root .no { width:34px; text-align:center; color:#718096; }
+            #pdf-root .sp { width:36%; }
+            #pdf-root .ans { margin:2px 0; line-height:2.2; }
+            #pdf-root .w { display:inline-block; background:#ebf4ff; border:1px solid #90cdf4; border-radius:5px; padding:0 9px; font-weight:bold; line-height:1.7; }
+            #pdf-root .arr { color:#a0aec0; margin:0 4px; }
+            #pdf-root .alt { font-size:12px; color:#d69e2e; font-weight:bold; margin-right:6px; }
+            #pdf-root .blank { height:34px; border-bottom:1px dashed #a0aec0; }
+        `;
+        const html = `<div id="pdf-root">
             <h1>🤟 手語語序預習題目</h1>
             <div class="meta">共 ${qs.length} 題　｜　列印日期：${today}</div>
             <div class="nameline">班級：__________　姓名：__________</div>
             ${body}
-        </body></html>`;
+        </div>`;
 
-        const old = document.getElementById('pdf-print-frame');
-        if (old) old.remove();
-        const iframe = document.createElement('iframe');
-        iframe.id = 'pdf-print-frame';
-        iframe.style.cssText = 'position:fixed; right:0; bottom:0; width:0; height:0; border:0;';
-        document.body.appendChild(iframe);
-        const doc = iframe.contentWindow.document;
-        doc.open(); doc.write(html); doc.close();
-        setTimeout(() => { iframe.contentWindow.focus(); iframe.contentWindow.print(); }, 400);
+        const oldHost = document.getElementById('pdf-render-host');
+        if (oldHost) oldHost.remove();
+        const oldStyle = document.getElementById('pdf-render-style');
+        if (oldStyle) oldStyle.remove();
+        const styleEl = document.createElement('style');
+        styleEl.id = 'pdf-render-style';
+        styleEl.textContent = css;
+        document.head.appendChild(styleEl);
+
+        // 全螢幕白色遮罩，內容固定貼在視窗左上角（避開捲動 / 置中造成的位移）
+        const host = document.createElement('div');
+        host.id = 'pdf-render-host';
+        host.style.cssText = 'position:fixed; left:0; top:0; width:100vw; height:100vh; z-index:2147483000; background:#fff; overflow:hidden;';
+        host.innerHTML = html + '<div style="position:fixed; right:16px; bottom:16px; background:#2d3748; color:#fff; padding:10px 16px; border-radius:8px; font-size:14px; z-index:2147483001;">⏳ 正在產生 PDF，請稍候…</div>';
+        document.body.appendChild(host);
+
+        const btn = document.getElementById('btn-export-pdf');
+        if (btn) { btn.disabled = true; btn.textContent = '⏳ 產生中…'; }
+        const fileName = `手語語序預習題目_${new Date().toISOString().slice(0, 10)}.pdf`;
+        const target = host.querySelector('#pdf-root');
+
+        const cleanup = () => {
+            host.remove(); styleEl.remove();
+            if (btn) { btn.disabled = false; btn.textContent = '📄 匯出勾選題目 PDF'; }
+        };
+
+        const ready = (document.fonts && document.fonts.ready) ? document.fonts.ready : Promise.resolve();
+        ready.then(() => new Promise(r => setTimeout(r, 300))).then(async () => {
+            const SCALE = 2;
+            const PX_PER_MM = 4;                 // 內容寬 760px ↔ 190mm
+            const PAGE_H_PX = 277 * PX_PER_MM;   // A4 去掉上下 10mm 邊界
+            const tRect = target.getBoundingClientRect();
+            const totalH = Math.ceil(target.scrollHeight);
+
+            // 可換頁的位置：分類標題、各表格的第 2 列起的每一列（避免切在一題中間或標題孤立）
+            const breaks = [];
+            target.querySelectorAll('h2').forEach(el => breaks.push(Math.round(el.getBoundingClientRect().top - tRect.top)));
+            target.querySelectorAll('table').forEach(tb => {
+                const rows = tb.querySelectorAll('tbody tr');
+                rows.forEach((tr, i) => { if (i > 0) breaks.push(Math.round(tr.getBoundingClientRect().top - tRect.top)); });
+            });
+            breaks.sort((x, y) => x - y);
+
+            const canvas = await html2canvas(target, {
+                scale: SCALE, backgroundColor: '#ffffff', useCORS: true,
+                scrollX: 0, scrollY: 0, x: 0, y: 0, width: target.offsetWidth, height: totalH,
+                windowWidth: document.documentElement.clientWidth, windowHeight: document.documentElement.clientHeight
+            });
+
+            const { jsPDF } = window.jspdf;
+            const pdf = new jsPDF({ unit: 'mm', format: 'a4', orientation: 'portrait' });
+            let start = 0, page = 0;
+            while (start < totalH - 1) {
+                let end = start + PAGE_H_PX;
+                if (end >= totalH) { end = totalH; }
+                else {
+                    const cands = breaks.filter(y => y > start + 40 && y <= end);
+                    if (cands.length) end = cands[cands.length - 1];
+                }
+                const sliceH = Math.max(1, Math.round((end - start) * SCALE));
+                const slice = document.createElement('canvas');
+                slice.width = canvas.width; slice.height = sliceH;
+                const ctx = slice.getContext('2d');
+                ctx.fillStyle = '#fff'; ctx.fillRect(0, 0, slice.width, slice.height);
+                ctx.drawImage(canvas, 0, Math.round(start * SCALE), canvas.width, sliceH, 0, 0, canvas.width, sliceH);
+                if (page > 0) pdf.addPage();
+                pdf.addImage(slice.toDataURL('image/jpeg', 0.95), 'JPEG', 10, 10, 190, (end - start) / PX_PER_MM);
+                start = end; page++;
+            }
+            pdf.save(fileName);
+        }).catch(err => {
+            console.error(err);
+            alert("❌ PDF 產生失敗，請重新整理後再試。\n" + (err && err.message ? err.message : ''));
+        }).finally(cleanup);
     }
 
     // 📦 離線功能：匯出題庫為 JSON 檔案
